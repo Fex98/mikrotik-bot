@@ -1,4 +1,5 @@
 import os
+import threading
 from flask import Flask, request
 import telebot
 
@@ -52,11 +53,18 @@ def webhook():
     except Exception as e:
         return str(e), 500
 
-# معالجة تفاعل الأزرار المرسلة من تليجرام
+# معالجة تفاعل الأزرار وأمر start
 @bot.message_handler(func=lambda message: True)
 def handle_buttons(message):
     text = message.text
-    if "المودمات المنقطعة" in text:
+    if text == "/start":
+        # إرسال لوحة المفاتيح والأزرار عند البدء
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.row("حالة الشبكة العامة")
+        markup.row("المودمات المنقطعة", "المودمات الشغالة")
+        bot.send_message(message.chat.id, "🚀 أهلاً بك في لوحة تحكم شبكة SKY_NET\nاختر من الأزرار أدناه لعرض التقارير اللحظية:", reply_markup=markup)
+        
+    elif "المودمات المنقطعة" in text:
         disc = modems_data.get('disconnected', [])
         if not disc:
             bot.send_message(message.chat.id, "⚠️ لا توجد مودمات منقطعة حالياً في القائمة الحية.\nتأكد من إرسال البيانات من المايكروتك إلى السيرفر.")
@@ -67,7 +75,7 @@ def handle_buttons(message):
     elif "المودمات الشغالة" in text:
         act = modems_data.get('active', [])
         if not act:
-            bot.send_message(message.chat.id, "⚠️ لا توجد مودمات شغالة حالياً في القائمة.")
+            bot.send_message(message.chat.id, "⚠️️ لا توجد مودمات شغالة حالياً في القائمة.")
         else:
             msg = "🟢 المودمات الشغالة:\n" + "\n".join(act)
             bot.send_message(message.chat.id, msg)
@@ -78,5 +86,15 @@ def handle_buttons(message):
         report = f"📊 تقرير حالة الشبكة العامة:\n🟢 الشغالة: {act_count}\n🔴 المنقطعة: {disc_count}"
         bot.send_message(message.chat.id, report)
 
+# تشغيل البوت في خلفية مستقلة لكي يستمع لتليجرام ويترك Flask يعمل للسيرفر
+def run_bot():
+    bot.infinity_polling()
+
 if __name__ == "__main__":
+    # تشغيل بوت تليجرام في خيط (Thread) منفصل
+    t = threading.Thread(target=run_bot)
+    t.daemon = True
+    t.start()
+    
+    # تشغيل سيرفر Flask
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
