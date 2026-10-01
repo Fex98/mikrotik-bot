@@ -10,18 +10,18 @@ app = Flask(__name__)
 def home():
     return "Bot is running!"
 
-@app.route('/update', methods=['POST'])
+@app.route('/update', methods=['GET', 'POST'])
 def webhook():
     try:
-        data = request.json
-        chat_id = data.get('chat_id')
-        text = data.get('text')
+        # استقبال البيانات سواء عبر الرابط أو الـ JSON
+        chat_id = request.args.get('chat_id') or (request.json and request.json.get('chat_id'))
+        text = request.args.get('text') or (request.json and request.json.get('text'))
         
         if chat_id and text:
             bot.send_message(chat_id, text)
             return "OK", 200
         else:
-            return "Invalid data", 400
+            return "Missing chat_id or text", 400
     except Exception as e:
         return str(e), 500
 
