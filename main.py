@@ -1,5 +1,4 @@
 import os
-import threading
 from flask import Flask, request
 import telebot
 
@@ -17,7 +16,18 @@ modems_data = {
 def home():
     return "Bot is running!"
 
-# الطريقة الجديدة النظيفة لإرسال الرسائل
+# مسار استقبال تحديثات تليجرام (Webhook)
+@app.route(f'/{TOKEN}', methods=['POST'])
+def receive_update():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return "OK", 200
+    else:
+        return "Invalid content-type", 403
+
+# الطريقة الجديدة النظيفة لإرسال الرسائل للمايكروتك
 @app.route('/send/<chat_id>/<text>')
 def send_clean(chat_id, text):
     try:
@@ -58,7 +68,6 @@ def webhook():
 def handle_buttons(message):
     text = message.text
     if text == "/start":
-        # إرسال لوحة المفاتيح والأزرار عند البدء
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.row("حالة الشبكة العامة")
         markup.row("المودمات المنقطعة", "المودمات الشغالة")
@@ -75,7 +84,7 @@ def handle_buttons(message):
     elif "المودمات الشغالة" in text:
         act = modems_data.get('active', [])
         if not act:
-            bot.send_message(message.chat.id, "⚠️️ لا توجد مودمات شغالة حالياً في القائمة.")
+            bot.send_message(message.chat.id, "⚠️ لا توجد مودمات شغالة حالياً في القائمة.")
         else:
             msg = "🟢 المودمات الشغالة:\n" + "\n".join(act)
             bot.send_message(message.chat.id, msg)
@@ -86,15 +95,9 @@ def handle_buttons(message):
         report = f"📊 تقرير حالة الشبكة العامة:\n🟢 الشغالة: {act_count}\n🔴 المنقطعة: {disc_count}"
         bot.send_message(message.chat.id, report)
 
-# تشغيل البوت في خلفية مستقلة لكي يستمع لتليجرام ويترك Flask يعمل للسيرفر
-def run_bot():
-    bot.infinity_polling()
-
 if __name__ == "__main__":
-    # تشغيل بوت تليجرام في خيط (Thread) منفصل
-    t = threading.Thread(target=run_bot)
-    t.daemon = True
-    t.start()
+    # تعيين الـ Webhook تلقائياً عند بدء التشغيل
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://mikrotik-bot-m7ui.onrender.com/{TOKEN}")
     
-    # تشغيل سيرفر Flask
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
