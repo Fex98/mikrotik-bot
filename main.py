@@ -24,25 +24,53 @@ def webhook_listener():
     bot.process_new_updates([update])
     return "OK", 200
 
-# مسار استقبال بيانات المودمات من المايكروتك (محدث ومحصن ضد الأخطاء)
+# مسار إرسال الرسائل النظيف للمايكروتك
+@app.route('/send/<chat_id>/<text>')
+def send_clean(chat_id, text):
+    try:
+        bot.send_message(chat_id, text)
+        return "OK", 200
+    except Exception as e:
+        return str(e), 500
+
+# مسار استقبال بيانات المودمات القديم
 @app.route('/update_modems', methods=['POST'])
 def update_modems():
     try:
-        # محاولة قراءة البيانات كـ JSON أو كبيانات نصية عادية
         data = request.get_json(silent=True)
         if not data:
             data = request.form
-            
-        print(f"--- Received Data from Mikrotik ---: {data}")
-        
         if data:
             modems_data['active'] = data.get('active', [])
             modems_data['disconnected'] = data.get('disconnected', [])
             return "Updated successfully", 200
-            
-        return "No data received", 400
+        return "No data", 400
     except Exception as e:
-        print(f"Error in update_modems: {str(e)}")
+        return str(e), 500
+
+# المسار البسيط الجديد للاختبار المباشر
+@app.route('/update_simple', methods=['GET', 'POST'])
+def update_simple():
+    try:
+        status_text = request.args.get('status', 'لا توجد بيانات')
+        modems_data['active'] = [status_text]
+        modems_data['disconnected'] = []
+        return "OK", 200
+    except Exception as e:
+        return str(e), 500
+
+@app.route('/update', methods=['GET', 'POST'])
+def legacy_update():
+    try:
+        chat_id = request.args.get('chat_id') or (request.json and request.json.get('chat_id'))
+        text = request.args.get('text') or (request.json and request.json.get('text'))
+        
+        if chat_id and text:
+            bot.send_message(chat_id, text)
+            return "OK", 200
+        else:
+            return "Missing chat_id or text", 400
+    except Exception as e:
         return str(e), 500
 
 # دوال الاستجابة لأوامر والأزرار في تليجرام
