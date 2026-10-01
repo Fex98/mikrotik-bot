@@ -6,11 +6,17 @@ TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
+# متغيرات مؤقتة لتخزين حالة المودمات
+modems_data = {
+    "active": [],
+    "disconnected": []
+}
+
 @app.route('/')
 def home():
     return "Bot is running!"
 
-# الطريقة الجديدة النظيفة (بدون رموز وعلامات استفهام - متوافقة تماماً مع جوالك)
+# الطريقة الجديدة النظيفة لإرسال الرسائل
 @app.route('/send/<chat_id>/<text>')
 def send_clean(chat_id, text):
     try:
@@ -19,10 +25,22 @@ def send_clean(chat_id, text):
     except Exception as e:
         return str(e), 500
 
+# مسار استقبال بيانات المودمات من المايكروتك
+@app.route('/update_modems', methods=['POST'])
+def update_modems():
+    try:
+        data = request.json
+        if data:
+            modems_data['active'] = data.get('active', [])
+            modems_data['disconnected'] = data.get('disconnected', [])
+            return "Updated successfully", 200
+        return "No data", 400
+    except Exception as e:
+        return str(e), 500
+
 @app.route('/update', methods=['GET', 'POST'])
 def webhook():
     try:
-        # استقبال البيانات سواء عبر الرابط القديم أو الـ JSON
         chat_id = request.args.get('chat_id') or (request.json and request.json.get('chat_id'))
         text = request.args.get('text') or (request.json and request.json.get('text'))
         
@@ -33,6 +51,32 @@ def webhook():
             return "Missing chat_id or text", 400
     except Exception as e:
         return str(e), 500
+
+# معالجة تفاعل الأزرار المرسلة من تليجرام
+@bot.message_handler(func=lambda message: True)
+def handle_buttons(message):
+    text = message.text
+    if "المودمات المنقطعة" in text:
+        disc = modems_data.get('disconnected', [])
+        if not disc:
+            bot.send_message(message.chat.id, "⚠️ لا توجد مودمات منقطعة حالياً في القائمة الحية.\nتأكد من إرسال البيانات من المايكروتك إلى السيرفر.")
+        else:
+            msg = "🔴 المودمات المنقطعة:\n" + "\n".join(disc)
+            bot.send_message(message.chat.id, msg)
+            
+    elif "المودمات الشغالة" in text:
+        act = modems_data.get('active', [])
+        if not act:
+            bot.send_message(message.chat.id, "⚠️ لا توجد مودمات شغالة حالياً في القائمة.")
+        else:
+            msg = "🟢 المودمات الشغالة:\n" + "\n".join(act)
+            bot.send_message(message.chat.id, msg)
+            
+    elif "حالة الشبكة العامة" in text:
+        act_count = len(modems_data.get('active', []))
+        disc_count = len(modems_data.get('disconnected', []))
+        report = f"📊 تقرير حالة الشبكة العامة:\n🟢 الشغالة: {act_count}\n🔴 المنقطعة: {disc_count}"
+        bot.send_message(message.chat.id, report)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
