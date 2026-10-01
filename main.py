@@ -16,18 +16,15 @@ modems_data = {
 def home():
     return "Bot is running!"
 
-# مسار استقبال تحديثات تليجرام (Webhook)
+# استقبال التحديثات من تليجرام عبر Webhook
 @app.route(f'/{TOKEN}', methods=['POST'])
-def receive_update():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return "OK", 200
-    else:
-        return "Invalid content-type", 403
+def webhook_listener():
+    json_str = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
 
-# الطريقة الجديدة النظيفة لإرسال الرسائل للمايكروتك
+# مسار إرسال الرسائل النظيف للمايكروتك
 @app.route('/send/<chat_id>/<text>')
 def send_clean(chat_id, text):
     try:
@@ -50,7 +47,7 @@ def update_modems():
         return str(e), 500
 
 @app.route('/update', methods=['GET', 'POST'])
-def webhook():
+def legacy_update():
     try:
         chat_id = request.args.get('chat_id') or (request.json and request.json.get('chat_id'))
         text = request.args.get('text') or (request.json and request.json.get('text'))
@@ -63,41 +60,38 @@ def webhook():
     except Exception as e:
         return str(e), 500
 
-# معالجة تفاعل الأزرار وأمر start
+# دوال الاستجابة لأوامر والأزرار في تليجرام
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("حالة الشبكة العامة")
+    markup.row("المودمات المنقطعة", "المودمات الشغالة")
+    bot.send_message(message.chat.id, "🚀 أهلاً بك في لوحة تحكم شبكة SKY_NET\nاختر من الأزرار أدناه لعرض التقارير اللحظية:", reply_markup=markup)
+
 @bot.message_handler(func=lambda message: True)
-def handle_buttons(message):
+def handle_text_buttons(message):
     text = message.text
-    if text == "/start":
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.row("حالة الشبكة العامة")
-        markup.row("المودمات المنقطعة", "المودمات الشغالة")
-        bot.send_message(message.chat.id, "🚀 أهلاً بك في لوحة تحكم شبكة SKY_NET\nاختر من الأزرار أدناه لعرض التقارير اللحظية:", reply_markup=markup)
-        
-    elif "المودمات المنقطعة" in text:
+    if "المودمات المنقطعة" in text:
         disc = modems_data.get('disconnected', [])
         if not disc:
-            bot.send_message(message.chat.id, "⚠️ لا توجد مودمات منقطعة حالياً في القائمة الحية.\nتأكد من إرسال البيانات من المايكروتك إلى السيرفر.")
+            bot.send_message(message.chat.id, "⚠️ لا توجد مودمات منقطعة حالياً في القائمة الحية.")
         else:
-            msg = "🔴 المودمات المنقطعة:\n" + "\n".join(disc)
-            bot.send_message(message.chat.id, msg)
+            bot.send_message(message.chat.id, "🔴 المودمات المنقطعة:\n" + "\n".join(disc))
             
     elif "المودمات الشغالة" in text:
         act = modems_data.get('active', [])
         if not act:
-            bot.send_message(message.chat.id, "⚠️ لا توجد مودمات شغالة حالياً في القائمة.")
+            bot.send_message(message.chat.id, "⚠️️ لا توجد مودمات شغالة حالياً في القائمة.")
         else:
-            msg = "🟢 المودمات الشغالة:\n" + "\n".join(act)
-            bot.send_message(message.chat.id, msg)
+            bot.send_message(message.chat.id, "🟢 المودمات الشغالة:\n" + "\n".join(act))
             
     elif "حالة الشبكة العامة" in text:
         act_count = len(modems_data.get('active', []))
         disc_count = len(modems_data.get('disconnected', []))
-        report = f"📊 تقرير حالة الشبكة العامة:\n🟢 الشغالة: {act_count}\n🔴 المنقطعة: {disc_count}"
-        bot.send_message(message.chat.id, report)
+        bot.send_message(message.chat.id, f"📊 تقرير حالة الشبكة العامة:\n🟢 الشغالة: {act_count}\n🔴 المنقطعة: {disc_count}")
 
 if __name__ == "__main__":
-    # تعيين الـ Webhook تلقائياً عند بدء التشغيل
+    # ضبط الويب هوك تلقائياً عند الإقلاع
     bot.remove_webhook()
     bot.set_webhook(url=f"https://mikrotik-bot-m7ui.onrender.com/{TOKEN}")
-    
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
